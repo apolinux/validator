@@ -8,6 +8,8 @@ This rules included: defined, PHP functions, is_array, is_object, min,max, regex
 # Example
 
 Example how rules are defined:
+
+````
   <?php
   
   $rules = [
@@ -23,3 +25,4 @@ Example how rules are defined:
   if( ! $validator->validate($rules) ){
     throw new \Exception('There is an error with input:' . $validator->getLastError()) ;
   }
+````
