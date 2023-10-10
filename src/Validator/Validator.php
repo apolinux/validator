@@ -5,13 +5,15 @@ namespace Apolinux\Validator ;
 use Closure ;
 
 /**
- * validates input fields from an array or object
- * according to defined or custom rules.
+ * Validates fields from input data
+ * 
+ * Validate fields from input data as array or object according to defined or custom rules.
  *
- * this rules included: defined, PHP functions, is_array, is_object, min,max, regex, closures, static methods.
+ * This rules included: defined, PHP functions, is_array, is_object, min,max, regex, 
+ * closures, static methods.
  *
  * Example how rules are defined:
- * <pre>
+ * <code>
  * $rules = [
  *   'name'      => 'is_alnum' , // php function
  *   'address'   => 'defined' , // internal validator
@@ -20,7 +22,7 @@ use Closure ;
  *   'fieldname5'=> 'defined|is_int|min:3|max:20', // several rules in one line separated by '|'
  *   ...
  * ]
- * </pre>
+ * </code>
  *
  */
 class Validator{
@@ -71,21 +73,92 @@ class Validator{
      *
      * @param array|object $rules rules to be validated
      */
-    public function __construct($rules) {
-        $this->rules = (array)$rules;
+    public function __construct(array $rules) {
+        $this->rules = $rules;
     }
 
     /**
-     * validates against rules defined in constructor
+     * validates input against rules defined in constructor
      *
-     * @param array $input1
+     * stops on first error. If stop_validation_default is false, continues 
+     * validating even if there are more errors after.
+     * 
+     * @param array|object $input
      * @return boolean true if validation is OK
-     * @throws \Exception
+     * @throws ValidatorException
      */
-    public function validate($input1){
+    public function validate($input,$stop_validation_default=true){
         $this->errors = [] ;
 
-        $input = (array)$input1 ;
+        $input = (array)$input ;
+        $rule_list = [] ;
+        foreach($this->rules as $field => $rule_field){
+            if(is_array($rule_field)){
+                $rule_list[$field] =  $this->getRulesArray($field, $rule_field);
+            }else {
+                $rule_list[$field] =  $this->getRulesPiped($field, $rule_field) ;
+            }
+        }
+        try{
+            foreach($rule_list as $field => $rules_field){
+                $stop_validation= $stop_validation_default ;
+                foreach($rules_field as $rule_info){
+                    $this->validateRuleField($input, $rule_info, $stop_validation);
+                }
+            }
+        }catch(ValidatorException | ValidatorDataException $e){
+            return false ;
+        }
+
+        return (count($this->errors) == 0 );
+    }
+
+        
+    /**
+     * validate rules for field
+     * 
+     * call validation functions for a field
+     *
+     * @param  mixed $input
+     * @param  mixed $rule_info
+     * @param  mixed $stop_validation
+     * @throws ValidatorException
+     * @return void
+     */
+    public function validateRuleField($input, $rule_info, $stop_validation){
+        list($fieldname, $rulename, $ruleparam) = $rule_info ;
+        try{
+            if($rulename instanceof Closure || is_object($rulename)){
+                $this->callClosure($input, $fieldname, $rulename) ;
+            }elseif('method' == (string)$rulename){
+                $this->_validate_method($input,$fieldname,$ruleparam);
+            }elseif(method_exists($this, 'validate_' . $rulename)){
+                $this->{'validate_'.$rulename}($input,$fieldname, $ruleparam);
+            }elseif(function_exists($rulename)){
+                $this->_callfunc($rulename,$input, $fieldname,$ruleparam);
+            }/*
+            @TODO, this implies to have rules of each field as array ,
+            so must change the way to print errors, because is an array of arrays...
+            elseif($rulename == 'nostop'){
+                $stop_validation = false ;
+            }*/else{
+                throw new ValidatorDataException("The rule '$rulename' does not have any function associated", $fieldname) ;
+            }
+        }catch(ValidatorDataException $e){
+            $this->errors[$e->getFieldName()] = $e->getMessage();
+            if($stop_validation){
+                throw new ValidatorException($e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * @deprecated
+     */
+    public function validateOld($input){
+        $this->errors = [] ;
+
+        $input = (array)$input ;
         $rule_list = [] ;
         foreach($this->rules as $field => $rule1){
             if(is_array($rule1)){
@@ -97,17 +170,20 @@ class Validator{
         try{
             foreach($rule_list as $rule_info){
                 list($field, $rulename, $ruleparam) = $rule_info ;
+                try{
+                    if($rulename instanceof Closure || is_object($rulename)){
+                        $this->callClosure($input, $field, $rulename) ;
+                    }elseif('method' == (string)$rulename){
+                        $this->_validate_method($input,$field,$ruleparam);
+                    }elseif(method_exists($this, 'validate_' . $rulename)){
+                        $this->{'validate_'.$rulename}($input,$field, $ruleparam);
+                    }elseif(function_exists($rulename)){
+                        $this->_callfunc($rulename,$input, $field,$ruleparam);
+                    }else{
+                        throw new ValidatorException("The rule '$rulename' does not have any function associated") ;
+                    }
+                }catch(ValidatorDataException $e){
 
-                if($rulename instanceof Closure || is_object($rulename)){
-                    $this->callClosure($input, $field, $rulename) ;
-                }elseif('method' == (string)$rulename){
-                    $this->_validate_method($input,$field,$ruleparam);
-                }elseif(method_exists($this, 'validate_' . $rulename)){
-                    $this->{'validate_'.$rulename}($input,$field, $ruleparam);
-                }elseif(function_exists($rulename)){
-                    $this->_callfunc($rulename,$input, $field,$ruleparam);
-                }else{
-                    throw new ValidatorException("The rule '$rulename' does not have any function associated") ;
                 }
             }
         }catch(ValidatorException $e){
@@ -117,7 +193,14 @@ class Validator{
 
         return true ;
     }
-
+        
+    /**
+     * get rules from array
+     *
+     * @param  string $field
+     * @param  array $rule1
+     * @return array
+     */
     private function getRulesArray($field, $rule1){
         $rule_list = [];
         foreach($rule1 as $rulename => $ruleparam){
@@ -130,6 +213,13 @@ class Validator{
         return $rule_list ;
     }
 
+    /**
+     * separate rules from string piped
+     * 
+     * @param  string $field
+     * @param  string $rule1
+     * @return array
+     */
     private function getRulesPiped($field, $rule1) {
         $rules_piped = $this->explodeSp('|',$rule1);
         $rule_list = [] ;
@@ -151,6 +241,7 @@ class Validator{
      * explode working with objects
      *
      * if 2nd field is an object it must to exclude from explode and generate an array
+     * 
      * @param string $sep
      * @param mixed $object
      * @return array
@@ -166,63 +257,114 @@ class Validator{
 
     /**
      * validate if field is defined in array
-     * @param type $input
-     * @param type $field
+     * @param array $input
+     * @param mixed $field
      * @throws ValidatorException
      */
-    private function validate_defined($input,$field){
-        if(!array_key_exists($field, $input)){
-            throw new ValidatorException("The field '$field' is not defined");
+    private function validate_defined($input,$fieldname){
+        if(!array_key_exists($fieldname, $input)){
+            throw new ValidatorDataException("The field '$fieldname' is not defined", $fieldname);
         }
     }
 
+    /**
+     * validate if field is greater than value
+     *
+     * @param  array  $input
+     * @param  string $fieldname
+     * @param  array  $params
+     * @return void
+     * @throws ValidatorException
+     */
     private function validate_min($input,$fieldname,$params){
         $this->validate_defined($input, $fieldname);
         $value = $input[$fieldname];
         if(is_scalar($value)){
             if($value < $params){
-                throw new ValidatorException("The field '$fieldname' has not the minimum length required");
+                throw new ValidatorDataException("The field '$fieldname' has not the minimum length required", $fieldname);
             }
         }elseif(count($value) < $params){
-            throw new ValidatorException("The field '$fieldname' has not the minimum length required");
+            throw new ValidatorDataException("The field '$fieldname' has not the minimum length required", $fieldname);
         }
     }
 
+    /**
+     * validate if field is less than value
+     *
+     * @param  array  $input
+     * @param  string $fieldname
+     * @param  array  $params
+     * @return void
+     * @throws ValidatorException
+     */
     private function validate_max($input,$fieldname,$params){
         $this->validate_defined($input, $fieldname);
         $value = $input[$fieldname];
         if(is_scalar($value)){
             if($value > $params){
-                throw new ValidatorException("The field '$fieldname' has not the maximum length required");
+                throw new ValidatorDataException("The field '$fieldname' has not the maximum length required", $fieldname);
             }
         }elseif(count($value) < $params){
-            throw new ValidatorException("The field '$fieldname' has not the maximum length required");
+            throw new ValidatorDataException("The field '$fieldname' has not the maximum length required", $fieldname);
         }
     }
 
+    /**
+     * validate if field has minimum length
+     *
+     * @param  array  $input
+     * @param  string $fieldname
+     * @param  array  $params
+     * @return void
+     * @throws ValidatorException
+     */
     private function validate_minlength($input,$fieldname,$params){
         $this->validate_defined($input, $fieldname);
         $value = $input[$fieldname];
+        
+        if(! is_scalar($value)){
+            throw new ValidatorDataException("The field '$fieldname' is not a scalar value", $fieldname);
+        }
+
         if(strlen($value) < $params){
-            throw new ValidatorException("The field '$fieldname' has not the minimum character length required");
+            throw new ValidatorDataException("The field '$fieldname' has not the minimum character length required", $fieldname);
         }
     }
 
+    /**
+     * validate if field has maximum length
+     *
+     * @param  array  $input
+     * @param  string $fieldname
+     * @param  array  $params
+     * @return void
+     * @throws ValidatorException
+     */
     private function validate_maxlength($input,$fieldname,$params){
         $this->validate_defined($input, $fieldname);
         $value = $input[$fieldname];
+        if(! is_scalar($value)){
+            throw new ValidatorDataException("The field '$fieldname' is not a scalar value", $fieldname);
+        }
         if(strlen($value) > $params){
-            throw new ValidatorException("The field '$fieldname' has not the maximum character length required");
+            throw new ValidatorDataException("The field '$fieldname' has not the maximum character length required", $fieldname);
         }
     }
     /**
      * validates if value is between two numbers
+     * 
      * example : 'fieldname' => 'range:12.5,57.4'
+     *
+     * @param  array $input
+     * @param  string $fieldname
+     * @param  array $params
+     * @return void
+     * @throws ValidatorException
      */
     private function validate_range($input,$fieldname,$params){
         $limits = $this->getLimitsRange($params);
         if(count($limits) < 2){
-          throw new ValidatorException("The range defined: '$params' is not valid") ;
+          throw new ValidatorDataException("The range defined: '$params' is not valid", $fieldname) ;
         }
 
         list($min, $max) = $limits ;
@@ -233,13 +375,20 @@ class Validator{
 
         if(is_scalar($value)){
             if($value > $max || $value < $min){
-                throw new ValidatorException("The field '$fieldname' exceeds the range limits defined");
+                throw new ValidatorDataException("The field '$fieldname' exceeds the range limits defined", $fieldname);
             }
         }elseif(count($value) > $max || count($value) < $min){
-            throw new ValidatorException("The field '$fieldname' exceeds the range limits defined");
+            throw new ValidatorDataException("The field '$fieldname' exceeds the range limits defined", $fieldname);
         }
     }
 
+    /**
+     * get limits of a data range
+     *
+     * @param  array|string $params
+     * @param  string $delimiter
+     * @return array
+     */
     private function getLimitsRange($params, $delimiter=','){
       if(is_array($params)){
         return $params ;
@@ -247,56 +396,87 @@ class Validator{
       return explode($delimiter, $params);
     }
 
+    /**
+     * validate if field is an integer
+     *
+     * @param  array $input
+     * @param  string $fieldname
+     * @return void
+     */
     private function validate_is_int($input,$fieldname){
         $this->validate_defined($input, $fieldname);
         $value = $input[$fieldname];
         if(! preg_match('/^\d+$/',$value)){
-                throw new ValidatorException("The field '$fieldname' is not an integer");
+                throw new ValidatorDataException("The field '$fieldname' is not an integer", $fieldname);
         }
     }
 
+    /**
+     * validate if field is an array
+     *
+     * @param  array $input
+     * @param  string $fieldname
+     * @return void
+     */
     private function validate_is_array($input,$fieldname){
         $this->validate_defined($input, $fieldname);
         $value = $input[$fieldname];
         if(! is_array($value)){
-                throw new ValidatorException("The field '$fieldname' is not an array");
+                throw new ValidatorDataException("The field '$fieldname' is not an array", $fieldname);
         }
     }
-
+    
+    /**
+     * validate if field is an object
+     *
+     * @param  array $input
+     * @param  string $fieldname
+     * @return void
+     */
     private function validate_is_object($input,$fieldname){
         $this->validate_defined($input, $fieldname);
         $value = $input[$fieldname];
         if(! is_object($value)){
-                throw new ValidatorException("The field '$fieldname' is not an object");
+                throw new ValidatorDataException("The field '$fieldname' is not an object", $fieldname);
         }
     }
 
+    /**
+     * rule to validate is a scalar
+     * 
+     * scalar means is int, float, string or boolean value.
+     *
+     * @param  array $input
+     * @param  string $fieldname
+     * @return void
+     */
     private function validate_is_scalar($input,$fieldname){
         $this->validate_defined($input, $fieldname);
         $value = $input[$fieldname];
         if(! is_scalar($value)){
-                throw new ValidatorException("The field '$fieldname' is not an scalar");
+                throw new ValidatorDataException("The field '$fieldname' is not an scalar", $fieldname);
         }
     }
 
     /**
      * validates if field value match regular expression
      *
-     * @param type $input
-     * @param type $field
-     * @param type $ruleparam
+     * @param array $input
+     * @param string $field
+     * @param string $ruleparam
      * @throws ValidatorException
      */
-    private function validate_regex($input, $field, $ruleparam){
-        $this->validate_defined($input, $field);
-        $this->validate_is_scalar($input, $field);
-        if(! preg_match($ruleparam,$input[$field])){
-            throw new ValidatorException("The field '$field' not match regex '$ruleparam'");
+    private function validate_regex($input, $fieldname, $ruleparam){
+        $this->validate_defined($input, $fieldname);
+        $this->validate_is_scalar($input, $fieldname);
+        if(! preg_match($ruleparam,$input[$fieldname])){
+            throw new ValidatorDataException("The field '$fieldname' not match regex '$ruleparam'", $fieldname);
         }
     }
 
     /**
      * validate with method in class
+     * 
      * the method must be called statically
      * method must be defined in form  ClassName::MethodName
      * the parameters received are:
@@ -308,52 +488,55 @@ class Validator{
      * @param string $field fieldname of input
      * @param string $ruleparam must be in form "classname::methodname"
      */
-    private function _validate_method($input, $field, $ruleparam){
-        $this->validate_defined($input, $field);
+    private function _validate_method($input, $fieldname, $ruleparam){
+        $this->validate_defined($input, $fieldname);
         list($class , $method) = explode('::',$ruleparam) ;
-        $this->_validate_one(class_exists($class) ,"The class '$class' does not exists") ;
+        $this->_validate_one($fieldname, class_exists($class) ,"The class '$class' does not exists") ;
 
-        $this->_validate_one(method_exists($class,$method), "The method '$method' of class '$class' does not exists") ;
+        $this->_validate_one($fieldname, method_exists($class,$method), "The method '$method' of class '$class' does not exists") ;
 
-        $result = $class::$method($input,$field, $msg);
-        $this->_validate_one( $result, $msg ?? "The field '$field' does not pass validator '$ruleparam'") ;
+        $result = $class::$method($input,$fieldname, $msg);
+        $this->_validate_one($fieldname, $result, $msg ?? "The field '$fieldname' does not pass validator '$ruleparam'") ;
     }
 
     /**
      * validate expression
+     * 
+     * @param string $fieldname
      * @param bool $expression
      * @param string $msg
      * @throws ValidatorException
      */
-    private function _validate_one($expression,$msg){
+    private function _validate_one($fieldname, $expression,$msg){
         if(! $expression){
-            throw new ValidatorException($msg);
+            throw new ValidatorDataException($msg, $fieldname);
         }
     }
 
     /**
      * call php or custom external function
+     * 
      * @param string $rulename
      * @param array $input
-     * @param string $field
+     * @param string $fieldname
      * @param string $ruleparam
      */
-    private function _callfunc($rulename,$input, $field,$ruleparam){
-        $this->validate_defined($input, $field);
+    private function _callfunc($rulename,$input, $fieldname,$ruleparam){
+        $this->validate_defined($input, $fieldname);
 
-        set_error_handler(function($errno, $errstr, $errfile, $errline, array $errcontext) {
+        set_error_handler(function($errno, $errstr, $errfile, $errline, array $errcontext) use ($fieldname){
             // error was suppressed with the @-operator
             if (0 === error_reporting()) {
                 return false;
             }
 
-            throw new ValidatorException($errstr, 0);
+            throw new ValidatorDataException($errstr, $fieldname);
         });
 
         if(is_null($ruleparam)){
-            $this->_validate_one( $rulename($input[$field]), "The field '$field' does not pass '$rulename' validator") ;
+            $this->_validate_one($fieldname, $rulename($input[$fieldname]), "The field '$fieldname' does not pass '$rulename' validator") ;
         }else{
-            $this->_validate_one($rulename($input[$field],$ruleparam), "The field '$field' does not pass '$rulename' validator") ;
+            $this->_validate_one($fieldname, $rulename($input[$fieldname],$ruleparam), "The field '$fieldname' does not pass '$rulename' validator") ;
         }
 
         restore_error_handler();
@@ -370,13 +553,13 @@ class Validator{
      * - $message is the message to show when fails validation
      *
      * @param array $input input data to validate
-     * @param string $field fieldname
+     * @param string $fieldname fieldname
      * @param Closure $rulename closure to be called
      */
-    private function callClosure($input, $field, Closure $rulename){
-        $this->validate_defined($input, $field);
-        $result = $rulename($input,$input[$field], $msg);
-        $this->_validate_one( $result, $msg ?? "The field '$field' does not pass closure validator") ;
+    private function callClosure($input, $fieldname, Closure $rulename){
+        $this->validate_defined($input, $fieldname);
+        $result = $rulename($input,$input[$fieldname], $msg);
+        $this->_validate_one($fieldname, $result, $msg ?? "The field '$fieldname' does not pass closure validator") ;
     }
 
     /**
@@ -387,5 +570,23 @@ class Validator{
         if(count($this->errors) > 0){
             return array_values(array_slice($this->errors, -1))[0];
         }
+    }
+
+    /**
+     * get first error
+     * 
+     * @return string
+     */
+    public function getFirstError(){
+        return $this->errors[0] ?? '' ;
+    }
+
+    /**
+     * return list of errors 
+     * 
+     * @return array
+     */
+    public function getErrors() : array{
+        return $this->errors ;
     }
 }

@@ -163,9 +163,7 @@ class ValidatorTest extends PHPUnit_Framework_TestCase{
         $validator = new Validator([
           'a' => 'defined|is_scalar|min:2|maxlength:6|regex:/^a.*z$/' ,
         ]);
-
         $this->assertTrue($validator->validate(['a' => 'a 3.5z']),(string)$validator->getLastError());
-
         $this->assertFalse($validator->validate(['a' => null]),(string)$validator->getLastError());
         $this->assertFalse($validator->validate(['a' => []]));
         $this->assertFalse($validator->validate(['a' => new stdClass()]),(string)$validator->getLastError());
@@ -287,4 +285,26 @@ class ValidatorTest extends PHPUnit_Framework_TestCase{
 
         $this->assertEquals($msg1,(string)$validator->getLastError());
     }
+
+    public function testValidateGetAllErrors(){
+      $validator = new Validator([
+        'a' => 'defined|is_scalar|minlength:2|maxlength:6|regex:/^a.*z$/' ,
+        'b' => ['is_array' , 'min' => 3] ,
+      ]);
+      $this->assertFalse($validator->validate(['a' => (array)'a 3.5z','b' => ['z','alfa']], false) ,
+      'must have validation errors') ;
+
+      $this->assertCount(2, $validator->getErrors());
+    }
+
+    /*public function testValidateNoStopError(){
+      $validator = new Validator([
+        'a' => 'nostop|defined|minlength:5|maxlength:3|regex:/^ax$/' ,
+        'b' => ['is_array' , 'min' => 3] ,
+      ]);
+      $this->assertFalse($validator->validate(['a' => 'a 3.5','b' => ['z','alfa']]) ,
+      'must have validation errors') ;
+      print_r($validator->getErrors());
+      $this->assertCount(2, $validator->getErrors());
+  }  */
 }
