@@ -119,3 +119,6 @@ To get all errors call getErrors() method.
 * add support to multiple languages
 * add more rules: equal length, is_json, is_xml,etc
 
+## Changes
+
+added version 0.5
