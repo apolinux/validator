@@ -117,7 +117,8 @@ To get all errors call getErrors() method.
 ## TODO
 
 * add support to multiple languages
-* add more rules: equal length, is_json, is_xml,etc
+* add more rules: equal length, is_json, is_xml, is_email, is_url,etc
+* acumulate errors per field
 
 ## Changes
 

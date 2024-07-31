@@ -307,4 +307,49 @@ class ValidatorTest extends PHPUnit_Framework_TestCase{
       print_r($validator->getErrors());
       $this->assertCount(2, $validator->getErrors());
   }  */
+
+  public function testValidateOptionalNoField(){
+    $validator = new Validator([
+      'a' => 'defined' ,
+      'b' => 'optional|min:5|max:10'
+    ]);
+    $this->assertTrue($validator->validate([
+      'a' => 'a 3.5z',
+      
+    ], false) ,
+    'must have validation errors:'. $validator->getLastError()) ;
+    //$this->assertEquals('bla',$validator->getLastError());
+    $this->assertCount(0, $validator->getErrors());
+  }
+
+  public function testValidateOptionalYesFieldError(){
+    $validator = new Validator([
+      'a' => 'defined' ,
+      'b' => 'optional|min:5|max:10'
+    ]);
+    $this->assertFalse($validator->validate([
+      'a' => 'a 3.5z',
+      'b' => 1
+    ], false) ,
+    'must have validation errors:'. $validator->getLastError()) ;
+    //$this->assertEquals('bla',$validator->getLastError());
+    //print_r($validator->getErrors());
+    $this->assertCount(1, $validator->getErrors());
+  }
+
+  public function testValidateOptionalYesFieldOk(){
+    $validator = new Validator([
+      'a' => 'defined' ,
+      'b' => 'optional|min:5|max:10'
+    ]);
+    $this->assertTrue($validator->validate([
+      'a' => 'a 3.5z',
+      'b' => 6
+    ], false) ,
+    'must not have validation errors:'. $validator->getLastError()) ;
+    //$this->assertEquals('bla',$validator->getLastError());
+    //print_r($validator->getErrors());
+    $this->assertCount(0, $validator->getErrors());
+  }
+
 }
