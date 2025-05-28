@@ -153,6 +153,38 @@ trait ValidationRulesTrait{
   }
 
   /**
+   * validates if text is found in a set of values
+   * 
+   * example : 'fieldname' => 'in:first,second,third'
+   *
+   * @param  array $input
+   * @param  string $fieldname
+   * @param  array $params
+   * @return void
+   * @throws ValidatorDataException
+   */
+  private function validate_in($input,$fieldname,$params){
+      $text_list = $this->getLimitsRange($params);
+
+      if(count($text_list) < 1){
+        throw new ValidatorDataException("There are no text to search in", $fieldname) ;
+      }
+
+      //list($min, $max) = $limits ;
+
+      $this->validate_defined($input, $fieldname);
+
+      $value = $input[$fieldname];
+
+      foreach($text_list as $text){
+          if($value === $text){
+              return; // found
+          }
+      }
+      throw new ValidatorDataException("The field '$fieldname' is not in the list defined", $fieldname);
+  }
+
+  /**
    * get limits of a data range
    *
    * @param  array|string $params

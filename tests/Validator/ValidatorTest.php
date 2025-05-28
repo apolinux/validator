@@ -352,4 +352,26 @@ class ValidatorTest extends PHPUnit_Framework_TestCase{
     $this->assertCount(0, $validator->getErrors());
   }
 
+  public function testValidateStringInOthers(){
+        $validator = new Validator([
+          'a' => ['in' => ['uno','dos','fin'] ] ,
+        ]);
+
+        $this->assertTrue($validator->validate(['a' => 'fin' ]),
+      (string)$validator->getLastError());
+
+        $this->assertFalse($validator->validate(['a' => 'DOS' ]));
+        $this->assertFalse($validator->validate(['a' => 'otro' ]));
+
+        // part B, validating using text separated by commas
+        $validator = new Validator([
+          'a' => 'in:uno,dos,fin' ,
+        ]);
+
+        $this->assertTrue($validator->validate(['a' => 'fin' ]),
+      (string)$validator->getLastError());
+
+        $this->assertFalse($validator->validate(['a' => 'DOS' ]));
+        $this->assertFalse($validator->validate(['a' => 'otro' ]));
+    }
 }
